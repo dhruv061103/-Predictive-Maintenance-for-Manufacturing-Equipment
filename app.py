@@ -2,9 +2,7 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 import streamlit as st
-from keras.models import Sequential
-from keras.layers import Dense, Dropout, LSTM
-from keras.callbacks import EarlyStopping
+from keras.models import load_model
 import matplotlib.pyplot as plt
 
 # Function to load and handle the dataset
@@ -79,17 +77,6 @@ def gen_label(id_df, seq_length, seq_cols, label):
         y_label.append(id_df[label][stop])
     return np.array(y_label)
 
-# Function to build and compile LSTM model
-def build_lstm_model(X_train, seq_length, nb_features):
-    model = Sequential()
-    model.add(LSTM(input_shape=(seq_length, nb_features), units=100, return_sequences=True))
-    model.add(Dropout(0.2))
-    model.add(LSTM(units=50, return_sequences=False))
-    model.add(Dropout(0.2))
-    model.add(Dense(units=1, activation='sigmoid'))
-    model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
-    return model
-
 # Main app for Streamlit
 def app():
     # Set the title of the app
@@ -116,13 +103,8 @@ def app():
     y_test = np.concatenate([gen_label(dataset_test[dataset_test['id'] == id], seq_length, features_col_name, target_col_name)
                              for id in dataset_test['id'].unique()], axis=0)
 
-    # Build and train LSTM model
-    nb_features = X_train.shape[2]
-    model = build_lstm_model(X_train, seq_length, nb_features)
-
-    # Fit the model
-    model.fit(X_train, y_train, epochs=10, batch_size=200, validation_split=0.05, verbose=1,
-              callbacks=[EarlyStopping(monitor='val_loss', patience=3)])
+    # Load the pre-trained model
+    model = load_model('trained_model.h5')
 
     # Evaluate model
     scores = model.evaluate(X_train, y_train, verbose=1, batch_size=200)
