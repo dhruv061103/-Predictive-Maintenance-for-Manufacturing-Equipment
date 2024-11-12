@@ -1,6 +1,4 @@
 import os
-os.system('pip install plotly')
-
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -29,8 +27,13 @@ if model_file is not None:
 
 # Check if both files are uploaded
 if dataset_file is not None and model_file is not None:
-    # Load the model
-    model = load_model(model_file)
+    # Save the uploaded model to a temporary file
+    model_path = "/tmp/uploaded_model.h5"
+    with open(model_path, "wb") as f:
+        f.write(model_file.read())
+    
+    # Load the model from the saved file
+    model = load_model(model_path)
 
     # Load dataset (assuming it's a space-separated .txt file)
     @st.cache
