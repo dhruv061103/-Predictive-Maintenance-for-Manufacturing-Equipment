@@ -16,6 +16,14 @@ train_data.dropna(axis=1, inplace=True)  # Remove extra spaces or NaN columns
 train_data.columns = ['UnitNumber', 'TimeInCycles'] + [f'OpSet{i}' for i in range(1, 4)] + \
                      [f'Sensor{i}' for i in range(1, 22)]
 
+# Check if the number of features matches what the model expects
+expected_features = 24  # This should match your model's expected number of features
+actual_features = len(train_data.columns) - 2  # Subtracting 'UnitNumber' and 'TimeInCycles'
+
+if actual_features != expected_features:
+    st.error(f"Feature mismatch: Model expects {expected_features} features, but found {actual_features} features.")
+    st.stop()  # Stop execution if there's a mismatch
+
 # Normalize the sensor data
 scaler = StandardScaler()
 sensor_columns = [col for col in train_data.columns if 'Sensor' in col]
@@ -47,25 +55,19 @@ elif options == "Predict RUL":
     else:
         # Prepare the data for the LSTM model
         scaled_unit_data = unit_data[sensor_columns].values
-        # Check the number of timesteps your LSTM model was trained on
-        timesteps = 50  # Example: adjust this to your model's expected timesteps
+        timesteps = 50  # Adjust this to your model's expected timesteps
         features = scaled_unit_data.shape[1]
 
         if scaled_unit_data.shape[0] < timesteps:
-            # Pad sequences with zeros if they are shorter than the required timesteps
             padding = np.zeros((timesteps - scaled_unit_data.shape[0], features))
             scaled_unit_data = np.vstack((padding, scaled_unit_data))
         else:
-            # Use only the last `timesteps` data points if there are more
             scaled_unit_data = scaled_unit_data[-timesteps:]
 
-        # Reshape data for LSTM model (samples, timesteps, features)
         input_data = np.expand_dims(scaled_unit_data, axis=0)
         
-        # Check and print the input shape
         st.write("Input data shape for the model:", input_data.shape)
 
-        # Make a prediction
         try:
             prediction = model.predict(input_data)
             st.write(f"Predicted RUL for Unit {unit_number}: {int(prediction[0][0])} cycles")
