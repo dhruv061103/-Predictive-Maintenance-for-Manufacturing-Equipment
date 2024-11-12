@@ -1,101 +1,58 @@
-import os
 import streamlit as st
-import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
-from tensorflow.keras.models import load_model
-from sklearn.preprocessing import MinMaxScaler
+import numpy as np
+import tensorflow as tf
+from sklearn.preprocessing import StandardScaler
 
-# Streamlit app
-st.title('Predictive Maintenance Dashboard')
+# Load the trained LSTM model
+model = tf.keras.models.load_model('lstm_model.h5')
 
-# Sidebar: File Uploads
-st.sidebar.header("Upload Your Files")
+# Load the data
+train_data = pd.read_csv('PM_train.txt', delimiter=' ', header=None)
+truth_data = pd.read_csv('PM_truth.txt', header=None)
 
-# Upload dataset (txt)
-dataset_file = st.sidebar.file_uploader("Upload dataset (.txt format)", type=["txt"])
+# Basic preprocessing
+train_data.dropna(axis=1, inplace=True)  # Remove extra spaces or NaN columns
+train_data.columns = ['UnitNumber', 'TimeInCycles'] + [f'OpSet{i}' for i in range(1, 4)] + \
+                     [f'Sensor{i}' for i in range(1, 22)]
 
-# Upload model (H5 format for LSTM model)
-model_file = st.sidebar.file_uploader("Upload Model (.h5 format)", type=["h5"])
+# Normalize the data
+scaler = StandardScaler()
+scaled_data = scaler.fit_transform(train_data.iloc[:, 2:])  # Scaling the sensor data only
 
-# Acknowledgement of successful uploads
-if dataset_file is not None:
-    st.sidebar.success("Dataset uploaded successfully!")
+# Streamlit Dashboard
+st.title("Equipment Health Monitoring and RUL Prediction Dashboard")
+
+# Sidebar for navigation
+st.sidebar.header("Navigation")
+options = st.sidebar.radio("Select an option", ["Data Overview", "Predict RUL", "Maintenance Recommendations"])
+
+if options == "Data Overview":
+    st.header("Data Overview")
+    st.write("Here is a preview of the training data:")
+    st.dataframe(train_data.head())
+
+    st.write("Summary statistics of the data:")
+    st.write(train_data.describe())
+
+elif options == "Predict RUL":
+    st.header("Remaining Useful Life Prediction")
+    unit_number = st.number_input("Enter Unit Number", min_value=1, max_value=len(truth_data), value=1)
     
-if model_file is not None:
-    st.sidebar.success("Model uploaded successfully!")
+    # Prepare data for the selected unit
+    unit_data = train_data[train_data['UnitNumber'] == unit_number]
+    if unit_data.empty:
+        st.warning("No data found for this unit number.")
+    else:
+        scaled_unit_data = scaler.transform(unit_data.iloc[:, 2:])
+        # Reshape data for LSTM model (samples, timesteps, features)
+        input_data = np.expand_dims(scaled_unit_data, axis=0)
+        prediction = model.predict(input_data)
+        st.write(f"Predicted RUL for Unit {unit_number}: {int(prediction[0][0])} cycles")
 
-# Check if both files are uploaded
-if dataset_file is not None and model_file is not None:
-    # Save the uploaded model to a temporary file
-    model_path = "/tmp/uploaded_model.h5"
-    with open(model_path, "wb") as f:
-        f.write(model_file.read())
-    
-    # Load the model from the saved file
-    model = load_model(model_path)
-
-    # Load dataset (assuming it's a space-separated .txt file)
-    @st.cache
-    def load_data(file):
-        data = pd.read_csv(file, sep=' ', header=None)
-        return data
-
-    data = load_data(dataset_file)
-
-    # Preprocessing dataset (example scaling)
-    @st.cache
-    def preprocess_data(data):
-        # Assume that the last column is the target RUL
-        features = data.iloc[:, :-1].values  # all columns except the last one
-        target = data.iloc[:, -1].values  # last column (RUL)
-        
-        scaler = MinMaxScaler(feature_range=(0, 1))
-        scaled_features = scaler.fit_transform(features)
-        
-        return scaled_features, target, scaler
-
-    scaled_features, target, scaler = preprocess_data(data)
-
-    # Prepare sequences for LSTM
-    def create_sequences(data, seq_length=50):
-        sequences = []
-        for i in range(len(data) - seq_length):
-            sequences.append(data[i:i + seq_length])
-        return np.array(sequences)
-
-    X = create_sequences(scaled_features)
-    y = target[50:]  # Assuming RUL is in the 51st column
-
-    # Predict Remaining Useful Life (RUL)
-    predictions = model.predict(X)
-
-    # Visualize RUL predictions vs true values
-    st.subheader('RUL Predictions vs True Values')
-
-    fig = go.Figure()
-
-    # Add True RUL trace
-    fig.add_trace(go.Scatter(x=np.arange(len(y)), y=y, mode='lines+markers', name='True RUL'))
-
-    # Add Predicted RUL trace
-    fig.add_trace(go.Scatter(x=np.arange(len(predictions)), y=predictions.flatten(), mode='lines+markers', name='Predicted RUL'))
-
-    fig.update_layout(
-        title='RUL Predictions vs True Values',
-        xaxis_title='Samples',
-        yaxis_title='Remaining Useful Life (RUL)',
-        template='plotly_dark'
-    )
-
-    st.plotly_chart(fig)
-
-    # Display predictions for specific machine
-    machine_id = st.number_input('Enter Machine ID to see failure probability', min_value=1, max_value=len(predictions), value=1)
-
-    # Calculate failure probability (Placeholder)
-    failure_prob = 1 - np.exp(-predictions[machine_id-1] / 100)
-    st.write(f"Predicted Failure Probability for Machine {machine_id}: {failure_prob * 100:.2f}%")
-
-else:
-    st.warning("Please upload both the dataset and model.")
+elif options == "Maintenance Recommendations":
+    st.header("Maintenance Recommendations")
+    st.write("Based on the current health status, here are some recommendations:")
+    st.write("- Perform detailed diagnostics on units with less than 30 cycles RUL.")
+    st.write("- Schedule preventive maintenance to avoid unexpected failures.")
+    st.write("- Monitor sensor anomalies that deviate significantly from normal ranges.")
